@@ -1,0 +1,192 @@
+-- ----------------------------------------------------
+-- 1. ????? ??????? ???? Sequences ??????? ??? ????
+-- ----------------------------------------------------
+BEGIN
+    EXECUTE IMMEDIATE 'DROP TABLE FACT_PAYMENTS'; EXCEPTION WHEN OTHERS THEN NULL;
+END;
+/
+BEGIN
+    EXECUTE IMMEDIATE 'DROP TABLE FACT_ORDER_ITEMS'; EXCEPTION WHEN OTHERS THEN NULL;
+END;
+/
+BEGIN
+    EXECUTE IMMEDIATE 'DROP TABLE DIM_CUSTOMER'; EXCEPTION WHEN OTHERS THEN NULL;
+END;
+/
+BEGIN
+    EXECUTE IMMEDIATE 'DROP TABLE DIM_PRODUCT'; EXCEPTION WHEN OTHERS THEN NULL;
+END;
+/
+BEGIN
+    EXECUTE IMMEDIATE 'DROP TABLE DIM_SELLER'; EXCEPTION WHEN OTHERS THEN NULL;
+END;
+/
+BEGIN
+    EXECUTE IMMEDIATE 'DROP TABLE DIM_DATE'; EXCEPTION WHEN OTHERS THEN NULL;
+END;
+/
+BEGIN
+    EXECUTE IMMEDIATE 'DROP SEQUENCE SEQ_DIM_CUSTOMER'; EXCEPTION WHEN OTHERS THEN NULL;
+END;
+/
+BEGIN
+    EXECUTE IMMEDIATE 'DROP SEQUENCE SEQ_DIM_PRODUCT'; EXCEPTION WHEN OTHERS THEN NULL;
+END;
+/
+BEGIN
+    EXECUTE IMMEDIATE 'DROP SEQUENCE SEQ_DIM_SELLER'; EXCEPTION WHEN OTHERS THEN NULL;
+END;
+/
+BEGIN
+    EXECUTE IMMEDIATE 'DROP SEQUENCE SEQ_DIM_DATE'; EXCEPTION WHEN OTHERS THEN NULL;
+END;
+/
+
+-- ----------------------------------------------------
+-- 2. ????? ??? Sequences ?? ????
+-- ----------------------------------------------------
+CREATE SEQUENCE SEQ_DIM_CUSTOMER START WITH 1 INCREMENT BY 1;
+CREATE SEQUENCE SEQ_DIM_PRODUCT START WITH 1 INCREMENT BY 1;
+CREATE SEQUENCE SEQ_DIM_SELLER START WITH 1 INCREMENT BY 1;
+CREATE SEQUENCE SEQ_DIM_DATE START WITH 1 INCREMENT BY 1;
+
+-- ----------------------------------------------------
+-- 3. ????? ????? ??????? (Dimensions)
+-- ----------------------------------------------------
+CREATE TABLE DIM_CUSTOMER (
+    CUSTOMER_SK NUMBER PRIMARY KEY,
+    customer_id VARCHAR2(50),
+    customer_unique_id VARCHAR2(50),
+    customer_zip_code_prefix VARCHAR2(10),
+    customer_city VARCHAR2(100),
+    customer_state VARCHAR2(50),
+    EFF_START_DATE DATE,
+    EFF_END_DATE DATE,
+    CURRENT_FLAG CHAR(1),
+    INSERT_DATE TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UPDATE_DATE TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    BATCH_ID NUMBER
+);
+
+CREATE TABLE DIM_PRODUCT (
+    PRODUCT_SK NUMBER PRIMARY KEY,
+    product_id VARCHAR2(50),
+    product_category_name VARCHAR2(100),
+    product_weight_g NUMBER,
+    INSERT_DATE TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UPDATE_DATE TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    BATCH_ID NUMBER
+);
+
+CREATE TABLE DIM_SELLER (
+    SELLER_SK NUMBER PRIMARY KEY,
+    seller_id VARCHAR2(50),
+    seller_zip_code_prefix VARCHAR2(10),
+    seller_city VARCHAR2(100),
+    seller_state VARCHAR2(50),
+    INSERT_DATE TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UPDATE_DATE TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    BATCH_ID NUMBER
+);
+
+CREATE TABLE DIM_DATE (
+    DATE_SK NUMBER PRIMARY KEY,
+    date_actual DATE,
+    day NUMBER,
+    month NUMBER,
+    quarter NUMBER,
+    year NUMBER,
+    weekday_name VARCHAR2(20),
+    weekend_flag CHAR(1),
+    INSERT_DATE TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UPDATE_DATE TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    BATCH_ID NUMBER
+);
+
+-- ----------------------------------------------------
+-- 4. ????? ??? Triggers ?????? ??????? ?????????
+-- ----------------------------------------------------
+CREATE OR REPLACE TRIGGER TRG_DIM_CUSTOMER
+BEFORE INSERT ON DIM_CUSTOMER
+FOR EACH ROW
+BEGIN
+    -- ??? ?? ???? ???? ??? SK ?? ???? ?????? ?? ????? ?????? ?? ??? Sequence
+    IF :NEW.CUSTOMER_SK IS NULL THEN
+        SELECT SEQ_DIM_CUSTOMER.NEXTVAL INTO :NEW.CUSTOMER_SK FROM DUAL;
+    END IF;
+END;
+/
+
+CREATE OR REPLACE TRIGGER TRG_DIM_PRODUCT
+BEFORE INSERT ON DIM_PRODUCT
+FOR EACH ROW
+BEGIN
+    IF :NEW.PRODUCT_SK IS NULL THEN
+        SELECT SEQ_DIM_PRODUCT.NEXTVAL INTO :NEW.PRODUCT_SK FROM DUAL;
+    END IF;
+END;
+/
+
+CREATE OR REPLACE TRIGGER TRG_DIM_SELLER
+BEFORE INSERT ON DIM_SELLER
+FOR EACH ROW
+BEGIN
+    IF :NEW.SELLER_SK IS NULL THEN
+        SELECT SEQ_DIM_SELLER.NEXTVAL INTO :NEW.SELLER_SK FROM DUAL;
+    END IF;
+END;
+/
+
+CREATE OR REPLACE TRIGGER TRG_DIM_DATE
+BEFORE INSERT ON DIM_DATE
+FOR EACH ROW
+BEGIN
+    IF :NEW.DATE_SK IS NULL THEN
+        SELECT SEQ_DIM_DATE.NEXTVAL INTO :NEW.DATE_SK FROM DUAL;
+    END IF;
+END;
+/
+
+-- ----------------------------------------------------
+-- 5. ????? ????? ??????? (Facts)
+-- ----------------------------------------------------
+CREATE TABLE FACT_ORDER_ITEMS (
+    order_id VARCHAR2(50),
+    order_item_number NUMBER,
+    CUSTOMER_SK NUMBER REFERENCES DIM_CUSTOMER(CUSTOMER_SK),
+    PRODUCT_SK NUMBER REFERENCES DIM_PRODUCT(PRODUCT_SK),
+    SELLER_SK NUMBER REFERENCES DIM_SELLER(SELLER_SK),
+    DATE_SK NUMBER REFERENCES DIM_DATE(DATE_SK),
+    price NUMBER(10,2),
+    freight_value NUMBER(10,2),
+    order_status VARCHAR2(50),
+    PRIMARY KEY (order_id, order_item_number)
+);
+
+CREATE TABLE FACT_PAYMENTS (
+    order_id VARCHAR2(50),
+    payment_sequence NUMBER,
+    CUSTOMER_SK NUMBER REFERENCES DIM_CUSTOMER(CUSTOMER_SK),
+    DATE_SK NUMBER REFERENCES DIM_DATE(DATE_SK),
+    payment_type VARCHAR2(50),
+    payment_installments NUMBER,
+    payment_value NUMBER(10,2),
+    PRIMARY KEY (order_id, payment_sequence)
+);
+
+-- ----------------------------------------------------
+-- 6. ????? ??????? ???????? (Unknown Rows) ????? -1
+-- ----------------------------------------------------
+INSERT INTO DIM_CUSTOMER (CUSTOMER_SK, customer_id, customer_unique_id, EFF_START_DATE, EFF_END_DATE, CURRENT_FLAG, BATCH_ID)
+VALUES (-1, 'UNKNOWN', 'UNKNOWN', TO_DATE('1900-01-01', 'YYYY-MM-DD'), TO_DATE('9999-12-31', 'YYYY-MM-DD'), 'Y', -1);
+
+INSERT INTO DIM_PRODUCT (PRODUCT_SK, product_id, product_category_name, BATCH_ID)
+VALUES (-1, 'UNKNOWN', 'UNKNOWN', -1);
+
+INSERT INTO DIM_SELLER (SELLER_SK, seller_id, BATCH_ID)
+VALUES (-1, 'UNKNOWN', -1);
+
+INSERT INTO DIM_DATE (DATE_SK, date_actual, day, month, year, weekend_flag, BATCH_ID)
+VALUES (-1, TO_DATE('1900-01-01', 'YYYY-MM-DD'), 1, 1, 1900, 'N', -1);
+
+COMMIT;
